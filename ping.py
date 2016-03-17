@@ -29,6 +29,13 @@
 
     Revision history
     ~~~~~~~~~~~~~~~~
+    March 17, 2016
+    Changes by Corentin Debains:
+    - converted to support python 3 and added packaging info
+
+    Januari 27, 2015
+    Changed receive response to not accept ICMP request messages.
+    It was possible to receive the very request that was sent.
 
     March 11, 2010
     changes by Samuel Stauffer:
@@ -56,10 +63,6 @@
     December 4, 2000
     Changed the struct.pack() calls to pack the checksum and ID as
     unsigned. My thanks to Jerome Poincheval for the fix.
-
-    Januari 27, 2015
-    Changed receive response to not accept ICMP request messages.
-    It was possible to receive the very request that was sent.
 
     Last commit info:
     ~~~~~~~~~~~~~~~~~
@@ -91,13 +94,13 @@ def checksum(source_string):
     countTo = (len(source_string)/2)*2
     count = 0
     while count<countTo:
-        thisVal = ord(source_string[count + 1])*256 + ord(source_string[count])
+        thisVal = source_string[count + 1]*256 + source_string[count]
         sum = sum + thisVal
         sum = sum & 0xffffffff # Necessary?
         count = count + 2
 
     if countTo<len(source_string):
-        sum = sum + ord(source_string[len(source_string) - 1])
+        sum = sum + source_string[len(source_string) - 1]
         sum = sum & 0xffffffff # Necessary?
 
     sum = (sum >> 16)  +  (sum & 0xffff)
@@ -129,8 +132,8 @@ def receive_one_ping(my_socket, ID, timeout):
         type, code, checksum, packetID, sequence = struct.unpack(
             "bbHHh", icmpHeader
         )
-        # Filters out the echo request itself. 
-        # This can be tested by pinging 127.0.0.1 
+        # Filters out the echo request itself.
+        # This can be tested by pinging 127.0.0.1
         # You'll see your own request
         if type != 8 and packetID == ID:
             bytesInDouble = struct.calcsize("d")
@@ -154,7 +157,7 @@ def send_one_ping(my_socket, dest_addr, ID):
     # Make a dummy heder with a 0 checksum.
     header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, my_checksum, ID, 1)
     bytesInDouble = struct.calcsize("d")
-    data = (192 - bytesInDouble) * "Q"
+    data = bytes((192 - bytesInDouble) * "Q", 'utf-8')
     data = struct.pack("d", default_timer()) + data
 
     # Calculate the checksum on the data and the dummy header.
@@ -176,15 +179,12 @@ def do_one(dest_addr, timeout):
     icmp = socket.getprotobyname("icmp")
     try:
         my_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
-    except socket.error, (errno, msg):
-        if errno == 1:
-            # Operation not permitted
-            msg = msg + (
-                " - Note that ICMP messages can only be sent from processes"
-                " running as root."
-            )
-            raise socket.error(msg)
-        raise # raise the original error
+    except PermissionError as e:
+        e.args = (e.args if e.args else tuple()) + ((
+            " - Note that ICMP messages can only be sent from processes"
+            " running as root."
+        ),)
+        raise
 
     my_ID = os.getpid() & 0xFFFF
 
@@ -200,20 +200,20 @@ def verbose_ping(dest_addr, timeout = 2, count = 4):
     Send >count< ping to >dest_addr< with the given >timeout< and display
     the result.
     """
-    for i in xrange(count):
-        print "ping %s..." % dest_addr,
+    for i in range(count):
+        print("ping %s..." % dest_addr, end=' ')
         try:
             delay  =  do_one(dest_addr, timeout)
-        except socket.gaierror, e:
-            print "failed. (socket error: '%s')" % e[1]
+        except socket.gaierror as e:
+            print("failed. (socket error: '%s')" % e)
             break
 
-        if delay  ==  None:
-            print "failed. (timeout within %ssec.)" % timeout
+        if delay is None:
+            print("failed. (timeout within %ssec.)" % timeout)
         else:
-            delay  =  delay * 1000
-            print "get ping in %0.4fms" % delay
-    print
+            delay = delay * 1000
+            print("get ping in %0.4fms" % delay)
+    print()
 
 
 if __name__ == '__main__':
